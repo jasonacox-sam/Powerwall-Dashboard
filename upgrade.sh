@@ -6,7 +6,7 @@
 set -e
 
 # Set Globals
-VERSION="5.2.4"
+VERSION="5.2.5"
 CURRENT="Unknown"
 COMPOSE_ENV_FILE="compose.env"
 INFLUXDB_ENV_FILE="influxdb.env"
@@ -250,6 +250,57 @@ fi
 # Create Grafana Settings if missing (required in 2.4.0)
 if [ ! -f ${GF_ENV_FILE} ]; then
     cp "${GF_ENV_FILE}.sample" "${GF_ENV_FILE}"
+fi
+
+# Check for unquoted values containing spaces in Grafana env file (see issue #859).
+# Files sourced by compose-dash.sh must quote any value with spaces, e.g.
+#   GF_AUTH_ANONYMOUS_ORG_NAME="Main Org."
+# otherwise the shell treats the word after the space as a command
+# ("grafana.env: line 22: Org.: command not found").
+if [ -f "${GF_ENV_FILE}" ]; then
+    # Only flag simple unquoted values whose whitespace is inside the value:
+    #   - ignore inline comments (KEY=value # comment sources fine)
+    #   - skip values containing quotes or backslashes (auto-fix would be unsafe)
+    BAD_LINES=$(awk 'BEGIN { q = sprintf("%c", 39) }
+        /^[A-Za-z_][A-Za-z0-9_]*=/ {
+            val = substr($0, index($0, "=") + 1)
+            sub(/[[:space:]]#.*$/, "", val)   # strip inline comment
+            if (val != "" && val ~ /[[:space:]]/ &&
+                index(val, "\"") == 0 && index(val, q) == 0 && index(val, "\\") == 0) {
+                printf "%d: %s\n", NR, $0
+            }
+        }' "${GF_ENV_FILE}" || true)
+    if [ ! -z "${BAD_LINES}" ]; then
+        echo "ERROR: ${GF_ENV_FILE} contains unquoted values with spaces:"
+        echo ""
+        echo "${BAD_LINES}"
+        echo ""
+        echo "When this file is sourced, the shell tries to run the word after the space"
+        echo "as a command (e.g. \"Org.: command not found\"). Values with spaces must be"
+        echo "wrapped in double quotes, e.g.:"
+        echo "   GF_AUTH_ANONYMOUS_ORG_NAME=\"Main Org.\""
+        read -r -p "Add quotes automatically? [Y/n] " response
+        if [[ "$response" =~ ^([nN][oO]|[nN])$ ]]
+        then
+            echo "Please edit ${GF_ENV_FILE} manually, then re-run ./upgrade.sh"
+            rm -f tmp.sh
+            exit 1
+        fi
+        cp "${GF_ENV_FILE}" "${GF_ENV_FILE}.bak"
+        awk 'BEGIN { q = sprintf("%c", 39) }
+            /^[A-Za-z_][A-Za-z0-9_]*=/ {
+                val = substr($0, index($0, "=") + 1)
+                sub(/[[:space:]]#.*$/, "", val)   # strip inline comment
+                if (val != "" && val ~ /[[:space:]]/ &&
+                    index(val, "\"") == 0 && index(val, q) == 0 && index(val, "\\") == 0) {
+                    printf "%s=\"%s\"\n", substr($0, 1, index($0, "=") - 1), val
+                    next
+                }
+            }
+            { print }' "${GF_ENV_FILE}.bak" > "${GF_ENV_FILE}"
+        echo "Fixed - original saved as ${GF_ENV_FILE}.bak"
+        echo ""
+    fi
 fi
 
 # Check for latest Grafana settings (required in 2.6.2)

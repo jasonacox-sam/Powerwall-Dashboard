@@ -1,5 +1,19 @@
 # RELEASE NOTES
 
+## v5.2.5 - TEDAPI diagnostics & upgrade.sh env file check
+
+### New Features
+
+* **`verify.sh --tedapi`** — new detailed Gateway WiFi/TEDAPI diagnostics mode that reports Gateway WiFi signal strength and TEDAPI connectivity, to help debug SolarOnly-fallback and missing-vitals symptoms. `TEDAPI_HOST` is parsed as `host:port` where present, `PW_HOST` is masked in output so logs are safe to share, and the final verdict is TEDAPI-aware. ([PR #857](https://github.com/jasonacox/Powerwall-Dashboard/pull/857) by **@jasonacox-sam**)
+
+### Bug Fixes
+
+* **`upgrade.sh` detects unquoted env values containing spaces** — older or hand-edited installations can carry an unquoted value in `grafana.env` (e.g. `GF_AUTH_ANONYMOUS_ORG_NAME=Main Org.`). When `compose-dash.sh` sources the file, the shell tries to run the word after the space as a command, producing the cryptic `grafana.env: line 22: Org.: command not found` failure during `./upgrade.sh`. `upgrade.sh` now checks for this just after the Grafana env file is created/verified: it prints a pointed error showing the offending line(s) and the correct quoted form, and offers to add the quotes automatically (original saved as `grafana.env.bak`); declining exits with instructions to fix it manually. ([PR #860](https://github.com/jasonacox/Powerwall-Dashboard/pull/860), closes [#859](https://github.com/jasonacox/Powerwall-Dashboard/issues/859))
+
+### Contributors
+
+Thanks to **@dkerr64** for reporting the unquoted `grafana.env` failure and for the `shellcheck` suggestion — an optional shellcheck CI check for the project's shell scripts will follow separately.
+
 ## v5.2.4 - Upgrade pypowerwall proxy to v0.17.0t100 (SolarOnly recovery fix)
 
 ### Updates
